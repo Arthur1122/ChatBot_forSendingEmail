@@ -32,19 +32,15 @@ namespace SimpleChatBot.Dialogs
             var waterfallSteps = new WaterfallStep[]
             {
                 InitializeStepAsync,
-                FinalStepAsync
             };
 
             AddDialog(new WaterfallDialog($"{nameof(MainDialog)}.mainflow",waterfallSteps));
-            AddDialog(new TextPrompt($"{nameof(MainDialog)}.email"));
-            AddDialog(new TextPrompt($"{nameof(MainDialog)}.success"));
-            AddDialog(new TextPrompt($"{nameof(MainDialog)}.erorr"));
-
+            AddDialog(new SendEmailDialog($"{nameof(MainDialog)}.sendEmail",_botStateService,_botServices));
+            
             InitialDialogId = $"{nameof(MainDialog)}.mainflow";
         }
 
-        
-        public async Task<DialogTurnResult> InitializeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        private async Task<DialogTurnResult> InitializeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             // First, we use the Dispatch model determine which Cognitive Service (LUIS or QnA) to use.
             var recognizerResult = await _botServices.Dispatch.RecognizeAsync(stepContext.Context, cancellationToken);
@@ -55,82 +51,18 @@ namespace SimpleChatBot.Dialogs
             var luisResult = recognizerResult.Properties["luisResult"] as LuisResult;
             var entites = luisResult.Entities;
 
-         
-            string emailAddress = "";
-            string message = "";
-            foreach (var entity in entites)
+            switch (topIntent.intent)
             {
-                if (entity.Type == "EmailBody") message += entity.Entity;
-                if (entity.Type == "builtin.email") emailAddress += entity.Entity;
+                case "SendEmialIntent":
+                    return await stepContext.BeginDialogAsync($"{nameof(MainDialog)}.sendEmail", null, cancellationToken);
+                case "RecipientNameIntent":
+                    return await stepContext.BeginDialogAsync($"{nameof(MainDialog)}.sendEmail", null, cancellationToken);
+                default:
+                    await  stepContext.Context.SendActivityAsync(MessageFactory.Text($"I am sorry I dont know what you mean."), cancellationToken);
+                    break;
             }
-
-            bool isSent = SendEmail(emailAddress, message);
-            if(isSent)
-            {
-                return await stepContext.PromptAsync($"{nameof(MainDialog)}.success",
-                    new PromptOptions
-                    {
-                        Prompt = MessageFactory.Text("The messeage sent successfully")
-                    }, cancellationToken);
-            }
-            else
-            {
-                return await stepContext.PromptAsync($"{nameof(MainDialog)}.erorr",
-                    new PromptOptions
-                    {
-                        Prompt = MessageFactory.Text("There is a problem in our program. Please try later")
-                    });
-            }
-            
+            return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
         }
 
-        public async Task<DialogTurnResult> FinalStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
-        {
-            return await stepContext.EndDialogAsync(null, cancellationToken);
-        }
-        private bool IsValidEmailAddress(string message)
-        {
-            Regex regex = new Regex(@"^([\w\.\-]+)@([\w\-]+)((\.(\w){2,3})+)$");
-            Match match = regex.Match(message);
-            if (match.Success) return true;
-            return false;
-
-        }
-
-        private bool SendEmail(string emailAddress,string messageBody)
-        {
-            try
-            {
-                var fromAddress = new MailAddress("bot33103@gmail.com", "Bot");
-                var toAddress = new MailAddress(emailAddress);
-                const string fromPassword = "Bingo777";
-                const string subject = "Sending message from Bot";
-                string body = messageBody;
-
-                var smtp = new SmtpClient
-                {
-                    Host = "smtp.gmail.com",
-                    Port = 587,
-                    EnableSsl = true,
-                    DeliveryMethod = SmtpDeliveryMethod.Network,
-                    Credentials = new NetworkCredential(fromAddress.Address, fromPassword),
-                    Timeout = 20000
-                };
-                using (var message = new MailMessage(fromAddress, toAddress)
-                {
-                    Subject = subject,
-                    Body = body
-                })
-                {
-                    smtp.Send(message);
-                }
-                return true;
-            }
-            catch (Exception ex)
-            {
-
-                return false;
-            }
-        }
     }
 }
