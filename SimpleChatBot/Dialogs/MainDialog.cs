@@ -36,6 +36,7 @@ namespace SimpleChatBot.Dialogs
 
             AddDialog(new WaterfallDialog($"{nameof(MainDialog)}.mainflow",waterfallSteps));
             AddDialog(new SendEmailDialog($"{nameof(MainDialog)}.sendEmail",_botStateService,_botServices));
+            AddDialog(new GreetingDialog($"{nameof(MainDialog)}.greeting", _botStateService));
             
             InitialDialogId = $"{nameof(MainDialog)}.mainflow";
         }
@@ -53,6 +54,8 @@ namespace SimpleChatBot.Dialogs
 
             switch (topIntent.intent)
             {
+                case "GreetingIntent":
+                    return await stepContext.BeginDialogAsync($"{nameof(MainDialog)}.greeting", null, cancellationToken);
                 case "SendEmialIntent":
                     return await stepContext.BeginDialogAsync($"{nameof(MainDialog)}.sendEmail", null, cancellationToken);
                 case "RecipientNameIntent":

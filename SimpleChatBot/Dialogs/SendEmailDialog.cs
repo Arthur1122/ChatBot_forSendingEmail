@@ -1,6 +1,7 @@
 ﻿using Microsoft.Azure.CognitiveServices.Language.LUIS.Runtime.Models;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Dialogs;
+using SimpleChatBot.Models;
 using SimpleChatBot.Services;
 using System;
 using System.Collections.Generic;
@@ -34,18 +35,20 @@ namespace SimpleChatBot.Dialogs
             {
                 InitializeStepAsync,
                 CheckRecipientEmailStepAsync,
+                CheckMessageAvalible,
                 FinalStepAsync
             };
 
             AddDialog(new WaterfallDialog($"{nameof(SendEmailDialog)}.mainflow", waterfallSteps));
             AddDialog(new TextPrompt($"{nameof(SendEmailDialog)}.checkEmail", CheckEmailAddressValidation));
+            AddDialog(new TextPrompt($"{nameof(SendEmailDialog)}.message"));
             AddDialog(new TextPrompt($"{nameof(SendEmailDialog)}.success"));
             AddDialog(new TextPrompt($"{nameof(SendEmailDialog)}.erorr"));
 
             InitialDialogId = $"{nameof(SendEmailDialog)}.mainflow";
         }
 
-
+        
         private async Task<DialogTurnResult> InitializeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             // creating new instance of dialog data
@@ -63,14 +66,13 @@ namespace SimpleChatBot.Dialogs
                 {
                     _dialogData.Message += " " + entity.Entity;
                 }
-                else if(entity.Type == "RecipientName")
+                else if(entity.Type == "builtin.personName")
                 {
-                    _dialogData.Recipient += entity.Entity;
+                    _dialogData.RecipientName += entity.Entity;
                 }
                 else if(entity.Type == "builtin.email")
                 {
-                    _dialogData.Recipient += entity.Entity;
-                    
+                    _dialogData.RecipientEmail += entity.Entity;
                 }
             }
 
@@ -79,7 +81,7 @@ namespace SimpleChatBot.Dialogs
 
         private async Task<DialogTurnResult> CheckRecipientEmailStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            bool isValidEmail = IsValidEmailAddress(_dialogData.Recipient);
+            bool isValidEmail = IsValidEmailAddress(_dialogData.RecipientEmail);
             if(isValidEmail)
             {
                 return await stepContext.NextAsync(null, cancellationToken);
@@ -89,20 +91,46 @@ namespace SimpleChatBot.Dialogs
                 return await stepContext.PromptAsync($"{nameof(SendEmailDialog)}.checkEmail",
                  new PromptOptions
                  {
-                     Prompt = MessageFactory.Text($"Enter a {_dialogData.Recipient}'s email"),
+                     Prompt = MessageFactory.Text($"Enter a {_dialogData.RecipientName}'s email"),
                      RetryPrompt = MessageFactory.Text("Enter valid email address")
                  }, cancellationToken);
             }
-            
         }
+
+        private async Task<DialogTurnResult> CheckMessageAvalible(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            if (stepContext.Result != null)
+            {
+                _dialogData.RecipientEmail = (string)stepContext.Result;
+            }
+
+            if (String.IsNullOrEmpty(_dialogData.Message))
+            {
+                return await stepContext.PromptAsync($"{nameof(SendEmailDialog)}.message",
+                    new PromptOptions
+                    {
+                        Prompt = MessageFactory.Text("What text do you want to send ?")
+                    });
+            }
+            else
+            {
+                return await stepContext.NextAsync();
+            }
+        }
+
 
         public async Task<DialogTurnResult> FinalStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
+            // Geting user name for email sending
+            UserProfile userProfile = await _botStateService.UserStateAccessor.GetAsync(stepContext.Context, () => new UserProfile());
+            _dialogData.UserFullName = userProfile.Name;
+
             if(stepContext.Result != null)
             {
-                _dialogData.Recipient = (string)stepContext.Result;
+                _dialogData.Message = (string)stepContext.Result;
             }
-            bool isSent = SendEmail(_dialogData.Recipient, _dialogData.Message);
+            
+            bool isSent = SendEmail(_dialogData.RecipientEmail, _dialogData.Message,_dialogData.UserFullName);
             if (isSent)
             {
                  await stepContext.Context.SendActivityAsync(MessageFactory.Text(String.Format("Message sent successfuly!")));
@@ -116,6 +144,8 @@ namespace SimpleChatBot.Dialogs
 
         private bool IsValidEmailAddress(string message)
         {
+            if (message == null) return false;
+
             Regex regex = new Regex(@"^([\w\.\-]+)@([\w\-]+)((\.(\w){2,3})+)$");
             Match match = regex.Match(message);
             if (match.Success) return true;
@@ -134,7 +164,7 @@ namespace SimpleChatBot.Dialogs
             }
             return Task.FromResult(valid);
         }
-        private bool SendEmail(string emailAddress, string messageBody)
+        private bool SendEmail(string emailAddress, string messageBody, string FromName)
         {
             try
             {
@@ -142,7 +172,7 @@ namespace SimpleChatBot.Dialogs
                 var toAddress = new MailAddress(emailAddress);
                 const string fromPassword = "Bingo777";
                 const string subject = "Sending message from Bot";
-                string body = messageBody;
+                string body = messageBody + "\n\n" + "\t" + "Kind Regards, " + FromName;
 
                 var smtp = new SmtpClient
                 {

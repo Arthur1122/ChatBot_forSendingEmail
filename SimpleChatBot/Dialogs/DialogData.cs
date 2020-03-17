@@ -8,6 +8,9 @@ namespace SimpleChatBot.Dialogs
     public class DialogData
     {
         public string Message { get; set; }
-        public string Recipient { get; set; }
+        public string RecipientEmail { get; set; }
+        public string  RecipientName { get; set; }
+        public string  UserFullName { get; set; }
+
     }
 }

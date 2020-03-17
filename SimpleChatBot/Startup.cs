@@ -50,6 +50,7 @@ namespace SimpleChatBot
             // Configure dialog
             services.AddSingleton<MainDialog>();
             services.AddSingleton<SendEmailDialog>();
+            services.AddSingleton<GreetingDialog>();
           
         }
 
