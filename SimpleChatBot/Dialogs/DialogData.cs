@@ -10,7 +10,7 @@ namespace SimpleChatBot.Dialogs
         public string Message { get; set; }
         public string RecipientEmail { get; set; }
         public string  RecipientName { get; set; }
-        public string  UserFullName { get; set; }
+        public string  UserName { get; set; }
 
     }
 }

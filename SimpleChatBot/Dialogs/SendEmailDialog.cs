@@ -1,6 +1,7 @@
 ﻿using Microsoft.Azure.CognitiveServices.Language.LUIS.Runtime.Models;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Dialogs;
+using Microsoft.Bot.Builder.Dialogs.Choices;
 using SimpleChatBot.Models;
 using SimpleChatBot.Services;
 using System;
@@ -35,7 +36,10 @@ namespace SimpleChatBot.Dialogs
             {
                 InitializeStepAsync,
                 CheckRecipientEmailStepAsync,
-                CheckMessageAvalible,
+                CheckMessageAvalibleStepAsync,
+                AskAboutEmailStepAsync,
+                UserEmailAddressStepAsync,
+                UserEmailPasswordStepAsync,
                 FinalStepAsync
             };
 
@@ -45,10 +49,15 @@ namespace SimpleChatBot.Dialogs
             AddDialog(new TextPrompt($"{nameof(SendEmailDialog)}.success"));
             AddDialog(new TextPrompt($"{nameof(SendEmailDialog)}.erorr"));
 
+            AddDialog(new ChoicePrompt($"{nameof(SendEmailDialog)}).answer"));
+            AddDialog(new TextPrompt($"{nameof(SendEmailDialog)}.checkUserEmail", CheckEmailAddressValidation));
+            AddDialog(new TextPrompt($"{nameof(SendEmailDialog)}.emailPassword"));
+
+
             InitialDialogId = $"{nameof(SendEmailDialog)}.mainflow";
         }
 
-        
+     
         private async Task<DialogTurnResult> InitializeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             // creating new instance of dialog data
@@ -97,7 +106,7 @@ namespace SimpleChatBot.Dialogs
             }
         }
 
-        private async Task<DialogTurnResult> CheckMessageAvalible(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        private async Task<DialogTurnResult> CheckMessageAvalibleStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             if (stepContext.Result != null)
             {
@@ -118,26 +127,118 @@ namespace SimpleChatBot.Dialogs
             }
         }
 
-
-        public async Task<DialogTurnResult> FinalStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        private async Task<DialogTurnResult> AskAboutEmailStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
-            // Geting user name for email sending
-            UserProfile userProfile = await _botStateService.UserStateAccessor.GetAsync(stepContext.Context, () => new UserProfile());
-            _dialogData.UserFullName = userProfile.Name;
-
-            if(stepContext.Result != null)
+            if (stepContext.Result != null)
             {
                 _dialogData.Message = (string)stepContext.Result;
             }
+
+            UserProfile userProfile = await _botStateService.UserStateAccessor.GetAsync(stepContext.Context, () => new UserProfile());
+
+            if (userProfile.EmailAddress == null || userProfile.EmailAddress != null)
+            {
+                return await stepContext.PromptAsync($"{nameof(SendEmailDialog)}).answer",
+                    new PromptOptions
+                    {
+                        Prompt = MessageFactory.Text("If you want to send the message from your email say yes/no"),
+                        Choices = ChoiceFactory.ToChoices(new List<string> { "Yes", "No" })
+                    });
+            }
             
-            bool isSent = SendEmail(_dialogData.RecipientEmail, _dialogData.Message,_dialogData.UserFullName);
+            else
+            {
+                return await stepContext.NextAsync();
+            }
+        }
+
+
+        private async Task<DialogTurnResult> UserEmailAddressStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            stepContext.Values["answer"] = ((FoundChoice)stepContext.Result).Value;
+
+            UserProfile userProfile = await _botStateService.UserStateAccessor.GetAsync(stepContext.Context, () => new UserProfile());
+
+            if((string)stepContext.Values["answer"] == "Yes" && userProfile.EmailAddress == null)
+            {
+                return await stepContext.PromptAsync($"{nameof(SendEmailDialog)}.checkUserEmail",
+                 new PromptOptions
+                 {
+                     Prompt = MessageFactory.Text($"Enter a Your email address"),
+                     RetryPrompt = MessageFactory.Text("Enter valid email address")
+                 }, cancellationToken);
+            }
+            else
+            {
+                return await stepContext.NextAsync();
+            }
+        }
+
+        private async Task<DialogTurnResult> UserEmailPasswordStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            if((string)stepContext.Values["answer"] == "No")
+            {
+                return await stepContext.NextAsync();
+            }
+
+            stepContext.Values["checkUserEmail"] = (string)stepContext.Result;
+            UserProfile userProfile = await _botStateService.UserStateAccessor.GetAsync(stepContext.Context, () => new UserProfile());
+
+            if(String.IsNullOrEmpty(userProfile.EmailAddress) && stepContext.Values["checkUserEmail"] != null)
+            {
+                userProfile.EmailAddress = (string)stepContext.Values["checkUserEmail"];
+
+                await _botStateService.UserStateAccessor.SetAsync(stepContext.Context, userProfile);
+            }
+
+            if(String.IsNullOrEmpty(userProfile.EmailPassword))
+            {
+                return await stepContext.PromptAsync($"{nameof(SendEmailDialog)}.emailPassword",
+                    new PromptOptions
+                    {
+                        Prompt = MessageFactory.Text("Enter email password!")
+                    });
+            }
+            else
+            {
+                return await stepContext.NextAsync();
+            }
+        }
+
+        public async Task<DialogTurnResult> FinalStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
+        {
+            stepContext.Values["emailPassword"] = (string)stepContext.Result;
+
+            // Geting user name for email sending
+            UserProfile userProfile = await _botStateService.UserStateAccessor.GetAsync(stepContext.Context, () => new UserProfile());
+
+            if(String.IsNullOrEmpty(userProfile.EmailPassword))
+            {
+                userProfile.EmailPassword = (string)stepContext.Values["emailPassword"];
+
+                await _botStateService.UserStateAccessor.SetAsync(stepContext.Context, userProfile);
+            }
+
+            _dialogData.UserName = userProfile.Name;
+
+            bool isSent = false;
+            if (userProfile.EmailAddress != null && userProfile.EmailPassword != null && (string)stepContext.Values["answer"] == "Yes")
+            {
+                isSent = SendEmail(_dialogData.RecipientEmail, _dialogData.Message, _dialogData.UserName,
+                                     userProfile.EmailAddress,userProfile.EmailPassword);
+            }
+            else
+            {
+                isSent = SendEmail(_dialogData.RecipientEmail, _dialogData.Message, _dialogData.UserName);
+            }
+
             if (isSent)
             {
                  await stepContext.Context.SendActivityAsync(MessageFactory.Text(String.Format("Message sent successfuly!")));
             }
             else
             {
-                await stepContext.Context.SendActivityAsync(MessageFactory.Text(String.Format("There is a problem in our program. Please try later"))); 
+                await stepContext.Context.SendActivityAsync(MessageFactory.Text(String.Format("There is a problem in our program or your data. Please try later"))); 
             }
             return await stepContext.EndDialogAsync(cancellationToken: cancellationToken);
         }
@@ -172,6 +273,45 @@ namespace SimpleChatBot.Dialogs
                 var toAddress = new MailAddress(emailAddress);
                 const string fromPassword = "Bingo777";
                 const string subject = "Sending message from Bot";
+                string body = messageBody + "\n\n" + "\t" + "Kind Regards, " + FromName;
+
+                var smtp = new SmtpClient
+                {
+                    Host = "smtp.gmail.com",
+                    Port = 587,
+                    EnableSsl = true,
+                    DeliveryMethod = SmtpDeliveryMethod.Network,
+                    Credentials = new NetworkCredential(fromAddress.Address, fromPassword),
+                    Timeout = 20000
+                };
+                using (var message = new MailMessage(fromAddress, toAddress)
+                {
+                    Subject = subject,
+                    Body = body
+                })
+                {
+                    smtp.Send(message);
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+
+                return false;
+            }
+        }
+
+
+
+        private bool SendEmail(string emailAddress, string messageBody, 
+                              string FromName,string FromEmail,string FromEmailPassword)
+        {
+            try
+            {
+                var fromAddress = new MailAddress(FromEmail, FromName);
+                var toAddress = new MailAddress(emailAddress);
+                string fromPassword = FromEmailPassword;
+                string subject = $"Sending message from {FromName}";
                 string body = messageBody + "\n\n" + "\t" + "Kind Regards, " + FromName;
 
                 var smtp = new SmtpClient
