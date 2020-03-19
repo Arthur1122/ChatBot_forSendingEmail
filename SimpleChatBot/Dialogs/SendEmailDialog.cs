@@ -56,8 +56,6 @@ namespace SimpleChatBot.Dialogs
 
             InitialDialogId = $"{nameof(SendEmailDialog)}.mainflow";
         }
-
-     
         private async Task<DialogTurnResult> InitializeStepAsync(WaterfallStepContext stepContext, CancellationToken cancellationToken)
         {
             // creating new instance of dialog data
@@ -136,20 +134,13 @@ namespace SimpleChatBot.Dialogs
 
             UserProfile userProfile = await _botStateService.UserStateAccessor.GetAsync(stepContext.Context, () => new UserProfile());
 
-            if (userProfile.EmailAddress == null || userProfile.EmailAddress != null)
-            {
                 return await stepContext.PromptAsync($"{nameof(SendEmailDialog)}).answer",
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("If you want to send the message from your email say yes/no"),
+                        Prompt = MessageFactory.Text("If you want to send the message from your email yes/no"),
                         Choices = ChoiceFactory.ToChoices(new List<string> { "Yes", "No" })
                     });
-            }
             
-            else
-            {
-                return await stepContext.NextAsync();
-            }
         }
 
 
@@ -265,43 +256,13 @@ namespace SimpleChatBot.Dialogs
             }
             return Task.FromResult(valid);
         }
-        private bool SendEmail(string emailAddress, string messageBody, string FromName)
+        private bool SendEmail(string emailAddress, string messageBody, string fromName)
         {
-            try
-            {
-                var fromAddress = new MailAddress("bot33103@gmail.com", "Bot");
-                var toAddress = new MailAddress(emailAddress);
-                const string fromPassword = "Bingo777";
-                const string subject = "Sending message from Bot";
-                string body = messageBody + "\n\n" + "\t" + "Kind Regards, " + FromName;
+            const string fromAddress = "bot33103@gmail.com";
+            const string fromPassword = "Bingo777";
 
-                var smtp = new SmtpClient
-                {
-                    Host = "smtp.gmail.com",
-                    Port = 587,
-                    EnableSsl = true,
-                    DeliveryMethod = SmtpDeliveryMethod.Network,
-                    Credentials = new NetworkCredential(fromAddress.Address, fromPassword),
-                    Timeout = 20000
-                };
-                using (var message = new MailMessage(fromAddress, toAddress)
-                {
-                    Subject = subject,
-                    Body = body
-                })
-                {
-                    smtp.Send(message);
-                }
-                return true;
-            }
-            catch (Exception ex)
-            {
-
-                return false;
-            }
+            return SendEmail(emailAddress, messageBody, fromName, fromAddress, fromPassword);
         }
-
-
 
         private bool SendEmail(string emailAddress, string messageBody, 
                               string FromName,string FromEmail,string FromEmailPassword)
