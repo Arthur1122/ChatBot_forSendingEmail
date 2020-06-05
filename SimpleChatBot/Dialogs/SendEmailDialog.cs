@@ -82,7 +82,6 @@ namespace SimpleChatBot.Dialogs
                     _dialogData.RecipientEmail += entity.Entity;
                 }
             }
-
             return await stepContext.NextAsync();
         }
 
@@ -137,10 +136,9 @@ namespace SimpleChatBot.Dialogs
                 return await stepContext.PromptAsync($"{nameof(SendEmailDialog)}).answer",
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("If you want to send the message from your email yes/no"),
+                        Prompt = MessageFactory.Text("Do you want to send message from you email ? yes/no"),
                         Choices = ChoiceFactory.ToChoices(new List<string> { "Yes", "No" })
                     });
-            
         }
 
 
@@ -242,7 +240,6 @@ namespace SimpleChatBot.Dialogs
             Match match = regex.Match(message);
             if (match.Success) return true;
             return false;
-
         }
 
         private Task<bool> CheckEmailAddressValidation(PromptValidatorContext<string> promptContext, CancellationToken cancellationToken)
@@ -296,7 +293,6 @@ namespace SimpleChatBot.Dialogs
             }
             catch (Exception ex)
             {
-
                 return false;
             }
         }
