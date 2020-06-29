@@ -115,7 +115,7 @@ namespace SimpleChatBot.Dialogs
                 return await stepContext.PromptAsync($"{nameof(SendEmailDialog)}.message",
                     new PromptOptions
                     {
-                        Prompt = MessageFactory.Text("What text do you want to send ?")
+                        Prompt = MessageFactory.Text("What  do you want to send ?")
                     });
             }
             else
